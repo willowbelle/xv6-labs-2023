@@ -1,5 +1,5 @@
-#include "../kernel/types.h"
-#include "user.h"
+#include "kernel/types.h"
+#include "user/user.h"
 
 void piperecursion(int input_fd)
 {

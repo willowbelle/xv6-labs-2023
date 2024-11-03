@@ -1,5 +1,5 @@
-#include "../kernel/types.h"
-#include "user.h"
+#include "kernel/types.h"
+#include "user/user.h"
 
 #define BSIZE 1
 
@@ -20,7 +20,7 @@ int main(){
   }else if(pid == 0){
     close(cp[0]);
     close(fp[1]);
-    // 可以加上read，write的错误处理机制
+    // can add handle falut machnism
     read(fp[0],buf,1);
     printf("%d: received ping\n",getpid());
     write(cp[1],buf,1);
