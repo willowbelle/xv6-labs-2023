@@ -3,7 +3,11 @@
 #include "user/user.h"
 #include "kernel/riscv.h"
 
-
+/// @brief 通过syscall sbrk增加进程的内存大小，并将secret string写入内存的相应位置
+///        内部陷入操作系统后通过sys_sbrk->growproc->uvmalloc->memset
+/// @param argc 
+/// @param argv 
+/// @return 
 int
 main(int argc, char *argv[])
 {

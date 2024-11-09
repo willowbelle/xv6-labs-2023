@@ -82,7 +82,7 @@ mycpu(void)
 struct proc*
 myproc(void)
 {
-  push_off();
+  push_off(); 
   struct cpu *c = mycpu();
   struct proc *p = c->proc;
   pop_off();
@@ -309,6 +309,9 @@ fork(void)
   np->cwd = idup(p->cwd);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
+
+  //add trace mask to kernel proc
+  np->trace_mask = p->trace_mask;
 
   pid = np->pid;
 

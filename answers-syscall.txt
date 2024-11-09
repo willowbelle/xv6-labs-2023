@@ -1,0 +1,13 @@
+usertrap in kernel/trap.c:67 call the syscall.
+
+p->trapframe->a7 = 0x7,a7 register is used to store syscall num,\
+in this example it loaded SYS_exec syscall num(0x07).
+
+
+previous mode is user mode,this can be konwn by the sstatus bits.
+
+the kernel is pancing at "lw ar,0(zero)",register a3 is corresponding to the variable num.
+
+In my opinion,the reason is address 0 isn't mapped.And scause value(0xd,usually represents load page fault) confirmed this.
+
+initcode process is running when the kernel panic,its pid is 1.

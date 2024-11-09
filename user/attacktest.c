@@ -69,6 +69,7 @@ main(int argc, char *argv[])
     exit(1);   
   }
   if(pid == 0) {
+    // children exec secret
     char *newargv[] = { "secret", secret, 0 };
     exec(newargv[0], newargv);
     printf("exec %s failed\n", newargv[0]);
