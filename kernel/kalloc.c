@@ -11,9 +11,10 @@
 
 void freerange(void *pa_start, void *pa_end);
 
-extern char end[]; // first address after kernel.
-                   // defined by kernel.ld.
-
+// first address after kernel, defined by kernel.ld.
+extern char end[]; 
+                   
+// free list element,every free page element stores in free page itself 
 struct run {
   struct run *next;
 };
@@ -23,35 +24,46 @@ struct {
   struct run *freelist;
 } kmem;
 
-void
-kinit()
+// add a new superfreelist
+struct {
+  struct spinlock lock;
+  struct run *freelist;
+} superkmem;
+
+/// @brief memory allocator init
+void kinit()
 {
   initlock(&kmem.lock, "kmem");
+  initlock(&superkmem.lock,"superkmem");
   freerange(end, (void*)PHYSTOP);
 }
 
-void
-freerange(void *pa_start, void *pa_end)
+/// @brief call kfree, convert to char * type and align;xv6 assumes ram only 128MB
+///        leave super pages for pass tests
+/// @param pa_start 
+/// @param pa_end 
+void freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+  for(; p + PGSIZE <= (char*)pa_end - 32 * SUPERPGSIZE; p += PGSIZE) // here nums of super pages suggested by gpt
     kfree(p);
+  p = (char *)SUPERPGROUNDUP((uint64)p);
+  for(; p + SUPERPGSIZE <= (char*)pa_end; p += SUPERPGSIZE)
+    superkfree(p);
 }
 
-// Free the page of physical memory pointed at by pa,
-// which normally should have been returned by a
-// call to kalloc().  (The exception is when
-// initializing the allocator; see kinit above.)
-void
-kfree(void *pa)
+
+/// @brief free a page pointed by pa;And add a free page to freelist(head insert)
+/// @param pa physical addresss
+void kfree(void *pa)
 {
   struct run *r;
-
+  // check
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
-  // Fill with junk to catch dangling refs.
+  // Fill with junk to catch dangling refs(有助于捕获悬挂引用).
   memset(pa, 1, PGSIZE);
 
   r = (struct run*)pa;
@@ -62,11 +74,29 @@ kfree(void *pa)
   release(&kmem.lock);
 }
 
-// Allocate one 4096-byte page of physical memory.
-// Returns a pointer that the kernel can use.
-// Returns 0 if the memory cannot be allocated.
-void *
-kalloc(void)
+
+/// @brief just for super page use,basically same to kfree
+/// @param pa 
+void superkfree(void *pa){
+  struct run *r;
+
+  if((uint64)pa % SUPERPGSIZE != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
+    panic("superkfree");
+
+  memset((void *)pa,1,SUPERPGSIZE);
+  r = (struct run*)pa;
+
+  acquire(&superkmem.lock);
+  r->next = superkmem.freelist;
+  superkmem.freelist = r;
+  release(&superkmem.lock);
+}
+
+
+/// @brief allocate a page size from freelist, don't forger move freelist head
+/// @param  none
+/// @return return pointer if success,else return NULL
+void * kalloc(void)
 {
   struct run *r;
 
@@ -78,5 +108,19 @@ kalloc(void)
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
+  return (void*)r;
+}
+
+
+void * superkalloc(void){
+  struct run *r;
+
+  acquire(&superkmem.lock);
+  r = superkmem.freelist;
+  if(r)
+    superkmem.freelist = r->next;
+  release(&superkmem.lock);
+  if(r)
+    memset((char *)r,5,SUPERPGSIZE);
   return (void*)r;
 }

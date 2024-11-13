@@ -84,8 +84,7 @@ print_kpgtbl()
 }
 
 
-void
-supercheck(uint64 s)
+void supercheck(uint64 s)
 {
   pte_t last_pte = 0;
 
@@ -112,8 +111,7 @@ supercheck(uint64 s)
   }
 }
 
-void
-superpg_test()
+void superpg_test()
 {
   int pid;
   

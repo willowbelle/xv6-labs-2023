@@ -106,8 +106,9 @@ allocpid()
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
 // If there are no free procs, or a memory allocation fails, return 0.
-static struct proc*
-allocproc(void)
+
+/// @brief 在进程表proc中查找一个未使用unused的进程槽，完成一些初始化操作
+static struct proc* allocproc(void)
 {
   struct proc *p;
 
@@ -124,6 +125,14 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+
+  // Allocate usyscall virtual address
+  if((p->usc = (struct usyscall *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+  p->usc->pid = p->pid;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -158,6 +167,9 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+  if(p->usc)
+    kfree((void*)p->usc);
+  p->usc = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -182,6 +194,12 @@ proc_pagetable(struct proc *p)
   pagetable = uvmcreate();
   if(pagetable == 0)
     return 0;
+
+  // create usyscall for user
+  if(mappages(pagetable,USYSCALL,PGSIZE,(uint64)(p->usc),PTE_R | PTE_U) < 0){
+    uvmfree(pagetable,0);
+    return 0;
+  }
 
   // map the trampoline code (for system call return)
   // at the highest user virtual address.
@@ -212,6 +230,7 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
+  uvmunmap(pagetable,USYSCALL,1,0);
   uvmfree(pagetable, sz);
 }
 
@@ -254,10 +273,11 @@ userinit(void)
   release(&p->lock);
 }
 
-// Grow or shrink user memory by n bytes.
-// Return 0 on success, -1 on failure.
-int
-growproc(int n)
+
+/// @brief Grow or shrink user memory by n bytes.
+/// @param n n bytes
+/// @return Return 0 on success, -1 on failure.
+int growproc(int n)
 {
   uint64 sz;
   struct proc *p = myproc();
