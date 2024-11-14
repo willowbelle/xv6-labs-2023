@@ -237,8 +237,7 @@ int mapSuperPage(pagetable_t pagetable, uint64 va, uint64 size,uint64 pa, int pe
 // Remove npages of mappings starting from va. va must be
 // page-aligned. The mappings must exist.
 // Optionally free the physical memory.
-void
-uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
+void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 {
   uint64 a;
   pte_t *pte;
@@ -264,6 +263,8 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       }else if(*pte & PTE_S){
         uint64 pa = PTE2PA(*pte);
         superkfree((void*)pa);
+      }else {
+        panic("illegal unmap\n");
       }
     }
     if(*pte & PTE_S)
@@ -322,13 +323,16 @@ uint64 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
     if(a % SUPERPGSIZE == 0 && a + SUPERPGSIZE < newsz){
       sz = SUPERPGSIZE;
       mem = superkalloc();
+      // add print to debug
+      printf("from superkalloc\n");
     }else {
       sz = PGSIZE;
       mem = kalloc();
+      printf("from kalloc\n");
     }
 
     if(mem == 0){
-      printf("kalloc failed\n");
+      printf("(super)kalloc failed\n");
       uvmdealloc(pagetable,a,oldsz);
       return 0;
     }
@@ -390,10 +394,10 @@ freewalk(pagetable_t pagetable)
   kfree((void*)pagetable);
 }
 
-// Free user memory pages,
-// then free page-table pages.
-void
-uvmfree(pagetable_t pagetable, uint64 sz)
+/// @brief Free user memory pages,then free page-table pages.(call uvmunmap)
+/// @param pagetable pagetable address
+/// @param sz size
+void uvmfree(pagetable_t pagetable, uint64 sz)
 {
   if(sz > 0)
     uvmunmap(pagetable, 0, PGROUNDUP(sz)/PGSIZE, 1);
@@ -582,6 +586,8 @@ void vmprint_recursive(pagetable_t pagetable, uint64 base_va, int depth)
     pte_t pte = pagetable[i];
     if (pte & PTE_V)
     {
+      // check and check,but only need  a space
+      printf(" ");
       for (int j = 0; j <= depth; j++)
       {
         printf("..");

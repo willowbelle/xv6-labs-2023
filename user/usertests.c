@@ -1053,8 +1053,7 @@ reparent2(char *s)
 }
 
 // allocate all mem, free it, and allocate again
-void
-mem(char *s)
+void mem(char *s)
 {
   void *m1, *m2;
   int pid;
@@ -2060,8 +2059,7 @@ sbrkbasic(char *s)
   exit(xstatus);
 }
 
-void
-sbrkmuch(char *s)
+void sbrkmuch(char *s)
 {
   enum { BIG=100*1024*1024 };
   char *c, *oldbrk, *a, *lastaddr, *p;
@@ -3001,8 +2999,7 @@ runtests(struct test *tests, char *justone, int continuous) {
 // because out of memory with lazy allocation results in the process
 // taking a fault and being killed, fork and report back.
 //
-int
-countfree()
+int countfree()
 {
   int fds[2];
 
@@ -3061,8 +3058,7 @@ countfree()
   return n;
 }
 
-int
-drivetests(int quick, int continuous, char *justone) {
+int drivetests(int quick, int continuous, char *justone) {
   do {
     printf("usertests starting\n");
     int free0 = countfree();

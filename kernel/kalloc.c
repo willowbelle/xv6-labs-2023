@@ -46,7 +46,7 @@ void freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end - 32 * SUPERPGSIZE; p += PGSIZE) // here nums of super pages suggested by gpt
+  for(; p + PGSIZE <= (char*)pa_end - 10 * SUPERPGSIZE; p += PGSIZE) // here nums of super pages suggested by gpt
     kfree(p);
   p = (char *)SUPERPGROUNDUP((uint64)p);
   for(; p + SUPERPGSIZE <= (char*)pa_end; p += SUPERPGSIZE)
