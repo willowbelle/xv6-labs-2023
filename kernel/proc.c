@@ -106,8 +106,7 @@ allocpid()
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
 // If there are no free procs, or a memory allocation fails, return 0.
-static struct proc*
-allocproc(void)
+static struct proc* allocproc(void)
 {
   struct proc *p;
 
@@ -132,6 +131,17 @@ found:
     return 0;
   }
 
+  // Allocate a page for alarm trapframe
+  if((p->alarm_trapf = (struct trapframe *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+  p->alarm_interval = 0;
+  p->alarm_handler = 0;
+  p->alarm_ticks = 0;
+  p->alarm_iscalled = 0;
+
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -152,14 +162,17 @@ found:
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
-static void
-freeproc(struct proc *p)
+static void freeproc(struct proc *p)
 {
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+
+  if(p->alarm_trapf)
+    kfree((void*)p->alarm_trapf);
+  p->alarm_trapf = 0;
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -168,6 +181,11 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+
+  p->alarm_interval = 0;
+  p->alarm_handler = 0;
+  p->alarm_ticks = 0;
+  p->alarm_iscalled = 0;
   p->state = UNUSED;
 }
 
@@ -692,4 +710,21 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+int sigalarm(int ticks, void (*handler)())
+{
+  struct proc *p = myproc();
+  p->alarm_interval = ticks;
+  p->alarm_handler = handler;
+  p->alarm_ticks = ticks;
+  return 0;
+}
+
+int sigreturn()
+{
+  struct proc *p = myproc();
+  *p->trapframe = *p->alarm_trapf;
+  p->alarm_iscalled = 0;
+  return p->trapframe->a0;
 }

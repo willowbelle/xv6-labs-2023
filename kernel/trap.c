@@ -33,8 +33,7 @@ trapinithart(void)
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
 //
-void
-usertrap(void)
+void usertrap(void)
 {
   int which_dev = 0;
 
@@ -58,6 +57,7 @@ usertrap(void)
 
     // sepc points to the ecall instruction,
     // but we want to return to the next instruction.
+    // 因为在系统调用的情况下pc指向ecall指令
     p->trapframe->epc += 4;
 
     // an interrupt will change sepc, scause, and sstatus,
@@ -77,8 +77,15 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
+    if(p->alarm_interval != 0 && --(p->alarm_ticks) <= 0 && !p->alarm_iscalled){
+      p->alarm_ticks = p->alarm_interval; // 
+      *p->alarm_trapf = *p->trapframe;
+      p->trapframe->epc = (uint64)p->alarm_handler;
+      p->alarm_iscalled = 1;
+    }
     yield();
+  }
 
   usertrapret();
 }
@@ -86,8 +93,7 @@ usertrap(void)
 //
 // return to user space
 //
-void
-usertrapret(void)
+void usertrapret(void)
 {
   struct proc *p = myproc();
 

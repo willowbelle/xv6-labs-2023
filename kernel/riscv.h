@@ -163,6 +163,8 @@ w_mideleg(uint64 x)
 static inline void 
 w_stvec(uint64 x)
 {
+  // csr(control and status register) write to stvec(supervisor trap-vector base address register)
+  // %0 操作数占位符，将会被x替换;r表示任意通用寄存器
   asm volatile("csrw stvec, %0" : : "r" (x));
 }
 
@@ -344,6 +346,14 @@ sfence_vma()
 {
   // the zero, zero means flush all TLB entries.
   asm volatile("sfence.vma zero, zero");
+}
+
+// get s0 to konw frame pointer of the currently executing function
+static inline uint64 r_fp()
+{
+  uint64 x;
+  asm volatile("mv %0, s0" : "=r"(x));
+  return x;
 }
 
 typedef uint64 pte_t;

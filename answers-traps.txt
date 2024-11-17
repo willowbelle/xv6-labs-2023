@@ -1,0 +1,17 @@
+1.According to risc-v calling convention, a0-a7 used to store less than eight //
+  integers,fa0-fa7 used to store less than eight floats in function argument.
+
+2.the complier inline function, so "26:	45b1                	li	a1,12" didn't call f/g,
+  but fill result 12 to a1
+
+3.From "30:	68e000ef          	jal	6be <printf>" we can see the address of printf is 6be
+
+4.jal(jump and link) instruction->ra store next instruction address, so ra = 0x34
+
+5.The output as follow:
+  HE110 World
+  For big-endian,i = 0x726c6400; 57616 did't nedd to change
+
+6.I delete -Werror flag, complie and run this,the output is x = 3,y = 8229?why this?
+  when run main, i add a variable dummy = 12345 first, y = 1;
+  
