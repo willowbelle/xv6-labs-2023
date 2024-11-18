@@ -309,28 +309,31 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 // physical memory.
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
-int
-uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
+    // change flag
+    if((*pte & PTE_W)){
+      *pte |= PTE_C;
+      *pte &= ~PTE_W;
+    }
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    // cancel allocate new page
+
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
+      printf("uvmcopy: mappages \n");
       goto err;
     }
+    icrRef((void *)pa);
   }
   return 0;
 
@@ -355,23 +358,23 @@ uvmclear(pagetable_t pagetable, uint64 va)
 // Copy from kernel to user.
 // Copy len bytes from src to virtual address dstva in a given page table.
 // Return 0 on success, -1 on error.
-int
-copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
+// Copy from kernel to user.
+// Copy len bytes from src to virtual address dstva in a given page table.
+// Return 0 on success, -1 on error.
+int copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
-  pte_t *pte;
 
-  while(len > 0){
+  while (len > 0)
+  {
     va0 = PGROUNDDOWN(dstva);
-    if(va0 >= MAXVA)
+    if (cowalloc(pagetable, va0) < 0)
       return -1;
-    pte = walk(pagetable, va0, 0);
-    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 ||
-       (*pte & PTE_W) == 0)
+    pa0 = walkaddr(pagetable, va0);
+    if (pa0 == 0)
       return -1;
-    pa0 = PTE2PA(*pte);
     n = PGSIZE - (dstva - va0);
-    if(n > len)
+    if (n > len)
       n = len;
     memmove((void *)(pa0 + (dstva - va0)), src, n);
 
@@ -448,4 +451,51 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+/// @brief page fault handler
+/// @param pagetable 
+/// @param va 
+/// @return 0 for success, -1 for failure
+int cowalloc(pagetable_t pagetable, uint64 va){
+  if(va >= MAXVA)
+    return -1;
+  uint64 pa, npa;
+  int flags;
+  va = PGROUNDDOWN(va);
+
+  pte_t *pte = walk(pagetable,va,0);
+  if( pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
+    return -1;
+  // this page is not a cow page
+  if ((*pte & PTE_W) && (*pte & PTE_C) == 0)
+    return 0;
+  // illegal write
+  if ((*pte & PTE_C) == 0 && (*pte & PTE_W) == 0)
+    return -1;
+  
+  flags = PTE_FLAGS(*pte);
+  pa = PTE2PA(*pte);
+ 
+  // according to refer cnt
+  if(getRefCnt((void*)pa) > 1){
+    if((npa = (uint64)kalloc()) == 0){
+      printf("failed in cowalloc: getRefCnt alloc\n");
+      return -1;
+    }
+    memmove((void*)npa,(const void *)pa,PGSIZE);
+    uvmunmap(pagetable,va,1,1);
+    flags &= ~PTE_C;
+    flags |= PTE_W;
+    if(mappages(pagetable,va,PGSIZE,npa,flags) != 0){
+      kfree((void*)npa);
+      return -1;
+    }
+    return 0;
+  } else if(getRefCnt((void *)pa) == 1){
+    *pte |= PTE_W;
+    *pte &= ~(PTE_C);
+    return 0;
+  }
+  return -1;
 }

@@ -13,7 +13,9 @@ void freerange(void *pa_start, void *pa_end);
 
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
-
+// pa to ref array idx
+#define PA2IDX(pa) (((uint64)pa - (uint64)end) / PGSIZE)
+#define PG_REFCNT(pa) (pageref.ref[(uint64)pa / PGSIZE])
 struct run {
   struct run *next;
 };
@@ -23,12 +25,55 @@ struct {
   struct run *freelist;
 } kmem;
 
-void
-kinit()
+struct
+{
+  struct spinlock lock;
+  int ref[PHYSTOP / PGSIZE];
+} pageref;
+
+void icrRef(void *pa)
+{
+  acquire(&pageref.lock);
+  PG_REFCNT(pa)++;
+  release(&pageref.lock);
+}
+
+void refcnt_init(void *pa)
+{
+  if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
+    panic("refcnt_init");
+  acquire(&pageref.lock);
+  PG_REFCNT(pa) = 1;
+  release(&pageref.lock);
+}
+
+void dcrRef(void *pa)
+{
+  if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
+    panic("dcrRef");
+  acquire(&pageref.lock);
+  PG_REFCNT(pa)--;
+  release(&pageref.lock);
+}
+
+int getRefCnt(void *pa)
+{
+  if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
+    panic("getRefCnt");
+  acquire(&pageref.lock);
+  int ret = PG_REFCNT(pa);
+  release(&pageref.lock);
+  return ret;
+}
+
+void kinit()
 {
   initlock(&kmem.lock, "kmem");
-  freerange(end, (void*)PHYSTOP);
+  initlock(&pageref.lock, "ref_cnt");
+  memset(pageref.ref, 0, sizeof(pageref.ref));
+  freerange(end, (void *)PHYSTOP);
 }
+
 
 void
 freerange(void *pa_start, void *pa_end)
@@ -43,18 +88,23 @@ freerange(void *pa_start, void *pa_end)
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
-void
-kfree(void *pa)
+void kfree(void *pa)
 {
   struct run *r;
 
-  if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+  if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
+
+  if (getRefCnt(pa) > 1)
+  {
+    dcrRef(pa);
+    return;
+  }
 
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
 
-  r = (struct run*)pa;
+  r = (struct run *)pa;
 
   acquire(&kmem.lock);
   r->next = kmem.freelist;
@@ -72,8 +122,10 @@ kalloc(void)
 
   acquire(&kmem.lock);
   r = kmem.freelist;
-  if(r)
+  if(r) {
     kmem.freelist = r->next;
+    refcnt_init((void*)r);
+  }
   release(&kmem.lock);
 
   if(r)
